@@ -1,80 +1,94 @@
 import json
+import os
+import re
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from dotenv import load_dotenv
 
-API_TOKEN = '7909905286:AAGkC0P_1CWXZogPLvN9r5ncNCx0mwiIa_g'
-GROUP_USERNAME = '@sanat_mebel'  # Masalan: '@sanat_mebel'
-ADMIN_ID = 7331395623  # Admin Telegram ID
+load_dotenv()
 
-# FSM (holatlar)
-class AddMovieState(StatesGroup):
-    waiting_for_code = State()
+API_TOKEN = os.getenv("BOT_TOKEN")
+GROUP_USERNAME = os.getenv("GROUP_USERNAME")
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
-# Bot va storage
 storage = MemoryStorage()
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot, storage=storage)
 
-# Kinolarni yuklab olish
+# Ro‘yxatdan o‘tgan foydalanuvchilar
+registered_users = set()
+temp_movies = {}
+
+# Kino fayli
 try:
     with open("kinolar.json", "r") as f:
         kinolar = json.load(f)
 except:
     kinolar = {}
 
-# Guruh tugmalari
+# FSM
+class AddMovieState(StatesGroup):
+    waiting_for_code = State()
+
+# Join tugmasi
 join_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="Guruhga qo'shilish", url=f"https://t.me/{GROUP_USERNAME[1:]}")],
-    [InlineKeyboardButton(text="Qo'shilganman ✅", callback_data="check_join")]
+    [InlineKeyboardButton("Guruhga qo'shilish", url=f"https://t.me/{GROUP_USERNAME[1:]}")],
+    [InlineKeyboardButton("Qo'shildim ✅", callback_data="check_join")]
 ])
 
-# /start komandasi
+# Faqat private chatga ruxsat
+@dp.message_handler(lambda msg: msg.chat.type != 'private')
+async def no_group(msg: types.Message):
+    await msg.reply("❗ Men faqat shaxsiy chatda ishlayman.")
+
+# Reklama filtr
+REKLAMA_SOZLAR = ["http", "https", ".ru", "vpn", "@", "t.me", "instagram", "youtube"]
+
+@dp.message_handler(lambda msg: any(bad in msg.text.lower() for bad in REKLAMA_SOZLAR))
+async def reklama_block(msg: types.Message):
+    await msg.delete()
+    await msg.answer("❌ Reklama yuborish taqiqlangan.")
+
+# /start
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
     try:
         member = await bot.get_chat_member(GROUP_USERNAME, message.from_user.id)
         if member.status in ["member", "administrator", "creator"]:
-            await message.reply("Salom! Kino kodini yozing, men sizga uni yuboraman.")
+            registered_users.add(message.from_user.id)
+            await message.reply("Salom! Kino kodini yuboring.")
         else:
-            await message.answer(
-                "Salom! Botdan foydalanish uchun avvalo guruhimizga qo'shiling.",
-                reply_markup=join_keyboard
-            )
-    except Exception:
-        await message.answer(
-            "Salom! Botdan foydalanish uchun avvalo guruhimizga qo'shiling.",
-            reply_markup=join_keyboard
-        )
+            await message.answer("Botdan foydalanish uchun guruhga qo'shiling.", reply_markup=join_keyboard)
+    except:
+        await message.answer("Botdan foydalanish uchun guruhga qo'shiling.", reply_markup=join_keyboard)
 
-# Guruhga qo'shilganlikni tekshirish
+# Guruhga qo‘shilganligini tekshirish
 @dp.callback_query_handler(lambda c: c.data == "check_join")
-async def process_check_join(callback_query: types.CallbackQuery):
+async def check_join(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
     try:
         member = await bot.get_chat_member(GROUP_USERNAME, user_id)
         if member.status in ["member", "administrator", "creator"]:
+            registered_users.add(user_id)
             await callback_query.answer("Siz guruh a'zosisiz!", show_alert=True)
-            await bot.send_message(user_id, "Botga xush kelibsiz! Endi kino nomini yozing.")
+            await bot.send_message(user_id, "Botga xush kelibsiz! Kino kodini yozing.")
         else:
-            await callback_query.answer("Siz hali guruhga qo'shilmagansiz.", show_alert=True)
-    except Exception:
-        await callback_query.answer("Xatolik yuz berdi yoki siz guruh a'zosi emassiz.", show_alert=True)
+            await callback_query.answer("Hali guruhga qo‘shilmadingiz.", show_alert=True)
+    except:
+        await callback_query.answer("Xatolik yoki guruhga a’zo emassiz.", show_alert=True)
 
-# Vaqtinchalik saqlovchi dict
-temp_movies = {}
-
-# /addmovie komandasi
+# /addmovie (admin)
 @dp.message_handler(commands=['addmovie'])
 async def add_movie(message: types.Message):
     if message.from_user.id != ADMIN_ID:
-        await message.reply("Faqat admin qo'shishi mumkin.")
+        await message.reply("Faqat admin qo‘shishi mumkin.")
         return
 
     if not message.reply_to_message or not message.reply_to_message.video:
-        await message.reply("Iltimos, kino videosiga javoban /addmovie kino_nomi deb yozing.")
+        await message.reply("Kino videosiga javoban /addmovie kino_nomi deb yozing.")
         return
 
     kino_nomi = message.get_args().strip().lower()
@@ -91,12 +105,12 @@ async def add_movie(message: types.Message):
     await message.reply("Endi kino kodini kiriting (masalan: #K123):")
     await AddMovieState.waiting_for_code.set()
 
-# Kino kodini qabul qilish
+# Kodni qabul qilish
 @dp.message_handler(state=AddMovieState.waiting_for_code)
 async def process_code(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     if user_id not in temp_movies:
-        await message.reply("Xatolik. Iltimos, /addmovie komandasi bilan qaytadan boshlang.")
+        await message.reply("Xatolik. /addmovie bilan qayta urinib ko‘ring.")
         await state.finish()
         return
 
@@ -104,7 +118,6 @@ async def process_code(message: types.Message, state: FSMContext):
     movie = temp_movies.pop(user_id)
     kino_nomi = movie["name"]
 
-    # Saqlash
     kinolar[kino_nomi] = {
         "file_id": movie["file_id"],
         "code": code
@@ -113,24 +126,25 @@ async def process_code(message: types.Message, state: FSMContext):
     with open("kinolar.json", "w") as f:
         json.dump(kinolar, f, indent=4)
 
-    await message.reply(f"✅ '{kino_nomi}' nomli kino kodi bilan saqlandi!")
+    await message.reply(f"✅ '{kino_nomi}' saqlandi!")
     await state.finish()
 
 # Kino yuborish
 @dp.message_handler()
-async def send_movie_by_code(message: types.Message):
-    code = message.text.strip()
+async def send_movie(message: types.Message):
+    if message.from_user.id not in registered_users:
+        await message.reply("❗ Botdan foydalanish uchun avval /start buyrug‘ini yuboring.")
+        return
 
-    # Kod bo'yicha kinoni izlash
-    for kino_nomi, kino_data in kinolar.items():
-        if isinstance(kino_data, dict) and kino_data.get("code") == code:
-            caption = f"🎬 Kino nomi: {kino_nomi.title()}\n🎞 Kino kodi: {code}"
-            await bot.send_video(message.chat.id, kino_data["file_id"], caption=caption)
+    code = message.text.strip()
+    for kino_nomi, data in kinolar.items():
+        if isinstance(data, dict) and data.get("code") == code:
+            caption = f"🎬 Kino nomi: {kino_nomi.title()}\n🎞 Kod: {code}"
+            await bot.send_video(message.chat.id, data["file_id"], caption=caption)
             return
 
-    # Agar topilmasa
-    await message.reply("Kechirasiz, bu kod bo‘yicha kino topilmadi.")
+    await message.reply("❗ Bunday kod bilan kino topilmadi.")
 
-# Botni ishga tushirish
+# Start
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
