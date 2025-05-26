@@ -1,8 +1,12 @@
+[build]
+nixpacksVersion = "1.18.0"
+builder = "nixpacks"
+
+[language.python]
+version = "3.10"
+
 [phases.setup]
-nixPkgs = ['python310', 'pip']
+nixPkgs = ["python310", "python310Packages.pip"]
 
-[phases.install]
-cmds = ['pip install -r requirements.txt']
-
-[phases.start]
-cmd = 'python main.py'
+[start]
+cmd = "python main.py"
