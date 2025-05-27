@@ -3,8 +3,8 @@ from aiogram import Bot, Dispatcher, executor, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 API_TOKEN = '7485385336:AAFAJyz8Yal28TU3bgv0Gn0sj-JBUmhLWUU'
-GROUP_USERNAME = '@sanat_mebel'  # Masalan: '@sanat_mebel'
-ADMIN_ID = 7331395623  # Admin Telegram ID
+GROUP_USERNAME = '@sanat_mebel'
+ADMIN_ID = 7331395623
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
@@ -15,20 +15,21 @@ join_keyboard = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Qo‘shildim ✅", callback_data="check_join")]
 ])
 
+# Kino ro‘yxatini o‘qish
 async def get_movie_list_text():
     try:
         with open("kinolar.json", "r") as f:
             kinolar = json.load(f)
-    except:
+    except Exception:
         kinolar = {}
 
     if kinolar:
         text = "Salom!\n\n🎥 Mavjud kinolar ro'yxati:\n\n"
         for code, info in kinolar.items():
             text += f"🆔 Kod: {code} | 🎬 Kino: {info['name']}\n"
-        text += "\nKod yozing:"
+        text += "\nQaysi kino kerak? Kodingizni kiriting:"
     else:
-        text = "Salom!\n\n⛔ Hozircha hech qanday kino mavjud emas.\nKod yozing:"
+        text = "Salom!\n\n⛔️ Hozircha hech qanday kino mavjud emas.\nKod yozing:"
     return text
 
 # /start komandasi
@@ -59,7 +60,7 @@ async def check_join(callback_query: types.CallbackQuery):
     except:
         await callback_query.answer("Xatolik yuz berdi yoki siz guruhda emassiz.", show_alert=True)
 
-# /addmovie komandasi (admin uchun)
+# /addmovie komandasi
 @dp.message_handler(commands=['addmovie'])
 async def add_movie(message: types.Message):
     if message.from_user.id != ADMIN_ID:
@@ -67,12 +68,12 @@ async def add_movie(message: types.Message):
         return
 
     if not message.reply_to_message or not message.reply_to_message.video:
-        await message.reply("Kino videosiga javoban /addmovie 1-Titanic deb yozing.")
+        await message.reply("Kino videosiga javoban /addmovie 30-Kino nomi deb yozing.")
         return
 
     args = message.get_args()
     if '-' not in args:
-        await message.reply("Iltimos, formatni to‘g‘ri kiriting: /addmovie 1-Titanic")
+        await message.reply("Iltimos, formatni to‘g‘ri kiriting: /addmovie 30-Kino nomi")
         return
 
     code, name = args.split('-', 1)
@@ -86,7 +87,7 @@ async def add_movie(message: types.Message):
     except:
         kinolar = {}
 
-    kinolar[code] = {
+    kinolar[str(code)] = {
         "name": name,
         "file_id": file_id
     }
@@ -94,28 +95,28 @@ async def add_movie(message: types.Message):
     with open("kinolar.json", "w") as f:
         json.dump(kinolar, f, indent=4)
 
-    await message.reply(f"✅ Kino saqlandi!\n📼 Nomi: {name}\n🆔 Kodi: {code}")
+    await message.reply(f"✅ Kino saqlandi!\n🎬 Nomi: {name}\n🆔 Kod: {code}")
 
 # Kod bo‘yicha kino qidirish
 @dp.message_handler()
 async def search_movie(message: types.Message):
     code = message.text.strip()
-
     try:
         with open("kinolar.json", "r") as f:
             kinolar = json.load(f)
     except:
         kinolar = {}
 
-    if code in kinolar:
-        movie = kinolar[code]
+    if str(code) in kinolar:
+        movie = kinolar[str(code)]
         await bot.send_video(
             message.chat.id,
             movie["file_id"],
-            caption=f"🎬 Kino: {movie['name']}\n🎞 Kod: {code}"
+            caption=f"🎬 Kino: {movie['name']}\n🆔 Kod: {code}"
         )
     else:
         await message.reply("Kechirasiz, bu kod bo‘yicha kino topilmadi.")
 
+# Botni ishga tushirish
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
