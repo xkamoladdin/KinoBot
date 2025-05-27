@@ -12,6 +12,7 @@ API_TOKEN = '7485385336:AAFAJyz8Yal28TU3bgv0Gn0sj-JBUmhLWUU'
 GROUP_USERNAME = '@sanat_mebel'  # Masalan: '@sanat_mebel'
 ADMIN_ID = 7331395623  # Admin Telegram ID
 
+
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
@@ -21,9 +22,10 @@ join_keyboard = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Qo‘shildim ✅", callback_data="check_join")]
 ])
 
+# Kino ro'yxatini qaytaradi
 async def get_movie_list_text():
     try:
-        with open("kinolar.json", "r") as f:
+        with open("kinolar.json", "r", encoding="utf-8") as f:
             kinolar = json.load(f)
     except:
         kinolar = {}
@@ -86,19 +88,22 @@ async def add_movie(message: types.Message):
     name = name.strip()
     file_id = message.reply_to_message.video.file_id
 
+    # Fayldan mavjud kinolarni o‘qish
     try:
-        with open("kinolar.json", "r") as f:
+        with open("kinolar.json", "r", encoding="utf-8") as f:
             kinolar = json.load(f)
     except:
         kinolar = {}
 
+    # Yangi kinoni qo‘shish
     kinolar[code] = {
         "name": name,
         "file_id": file_id
     }
 
-    with open("kinolar.json", "w") as f:
-        json.dump(kinolar, f, indent=4)
+    # Yangi faylni yozish
+    with open("kinolar.json", "w", encoding="utf-8") as f:
+        json.dump(kinolar, f, indent=4, ensure_ascii=False)
 
     await message.reply(f"✅ Kino saqlandi!\n📼 Nomi: {name}\n🆔 Kodi: {code}")
 
@@ -108,7 +113,7 @@ async def search_movie(message: types.Message):
     code = message.text.strip()
 
     try:
-        with open("kinolar.json", "r") as f:
+        with open("kinolar.json", "r", encoding="utf-8") as f:
             kinolar = json.load(f)
     except:
         kinolar = {}
@@ -123,5 +128,6 @@ async def search_movie(message: types.Message):
     else:
         await message.reply("Kechirasiz, bu kod bo‘yicha kino topilmadi.")
 
+# Botni ishga tushurish
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
